@@ -66,10 +66,14 @@ contract("LinniaRecords", (accounts) => {
     it("should allow a patient to add a record", async () => {
       const tx = await instance.addRecordByPatient(testFileHash, 1,
         testIpfsHash, { from: patient })
-      assert.equal(tx.logs.length, 1)
       assert.equal(tx.logs[0].event, "RecordAdded")
       assert.equal(tx.logs[0].args.fileHash, testFileHash)
       assert.equal(tx.logs[0].args.patient, patient)
+      assert.equal(tx.logs[1].event, "Transfer")
+      assert.equal(tx.logs[1].args._from, 0)
+      assert.equal(tx.logs[1].args._to, patient)
+      assert.equal(eutil.addHexPrefix(tx.logs[1].args._tokenId.toString(16)),
+        testFileHash)
       const timestamp = web3.eth.getBlock(tx.receipt.blockNumber)
         .timestamp
       // check state
@@ -119,14 +123,20 @@ contract("LinniaRecords", (accounts) => {
     it("should allow a provider to add a record", async () => {
       const tx = await instance.addRecordByProvider(testFileHash, patient, 1,
         testIpfsHash, { from: provider1 })
-      assert.equal(tx.logs.length, 2)
       assert.equal(tx.logs[0].event, "RecordAdded")
       assert.equal(tx.logs[0].args.fileHash, testFileHash)
       assert.equal(tx.logs[0].args.patient, patient)
-      assert.equal(tx.logs[1].event, "RecordSigAdded")
-      assert.equal(tx.logs[1].args.fileHash, testFileHash)
-      assert.equal(tx.logs[1].args.provider, provider1)
-      assert.equal(tx.logs[1].args.irisScore, 1)
+      // logs[1] is token transfer event
+      assert.equal(tx.logs[1].event, "Transfer")
+      assert.equal(tx.logs[1].args._from, 0)
+      assert.equal(tx.logs[1].args._to, patient)
+      assert.equal(eutil.addHexPrefix(tx.logs[1].args._tokenId.toString(16)),
+        testFileHash)
+      // logs[2] is sig added event
+      assert.equal(tx.logs[2].event, "RecordSigAdded")
+      assert.equal(tx.logs[2].args.fileHash, testFileHash)
+      assert.equal(tx.logs[2].args.provider, provider1)
+      assert.equal(tx.logs[2].args.irisScore, 1)
       const timestamp = web3.eth.getBlock(tx.receipt.blockNumber)
         .timestamp
       // check state
@@ -189,7 +199,7 @@ contract("LinniaRecords", (accounts) => {
       await instance.addRecordByPatient(testFileHash, 1,
         testIpfsHash, { from: patient })
       // have provider1 sign it
-      const tx = await instance.addSigByProvider(testFileHash,{from: provider1})
+      const tx = await instance.addSigByProvider(testFileHash, { from: provider1 })
       assert.equal(tx.logs.length, 1)
       assert.equal(tx.logs[0].event, "RecordSigAdded")
       assert.equal(tx.logs[0].args.fileHash, testFileHash)
@@ -289,7 +299,6 @@ contract("LinniaRecords", (accounts) => {
       const tx = await instance.addRecordByAdmin(testFileHash,
         patient, 0,
         1, testIpfsHash, { from: admin })
-      assert.equal(tx.logs.length, 1)
       assert.equal(tx.logs[0].event, "RecordAdded")
       assert.equal(tx.logs[0].args.fileHash, testFileHash)
       assert.equal(tx.logs[0].args.patient, patient)
@@ -306,14 +315,18 @@ contract("LinniaRecords", (accounts) => {
       const tx = await instance.addRecordByAdmin(testFileHash,
         patient, provider1,
         1, testIpfsHash, { from: admin })
-      assert.equal(tx.logs.length, 2)
       assert.equal(tx.logs[0].event, "RecordAdded")
       assert.equal(tx.logs[0].args.fileHash, testFileHash)
       assert.equal(tx.logs[0].args.patient, patient)
-      assert.equal(tx.logs[1].event, "RecordSigAdded")
-      assert.equal(tx.logs[1].args.fileHash, testFileHash)
-      assert.equal(tx.logs[1].args.provider, provider1)
-      assert.equal(tx.logs[1].args.irisScore, 1)
+      assert.equal(tx.logs[1].event, "Transfer")
+      assert.equal(tx.logs[1].args._from, 0)
+      assert.equal(tx.logs[1].args._to, patient)
+      assert.equal(eutil.addHexPrefix(tx.logs[1].args._tokenId.toString(16)),
+        testFileHash)
+      assert.equal(tx.logs[2].event, "RecordSigAdded")
+      assert.equal(tx.logs[2].args.fileHash, testFileHash)
+      assert.equal(tx.logs[2].args.provider, provider1)
+      assert.equal(tx.logs[2].args.irisScore, 1)
       // check state
       const storedRecord = await instance.records(testFileHash)
       assert.equal(storedRecord[0], patient)

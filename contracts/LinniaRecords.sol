@@ -2,11 +2,14 @@ pragma solidity ^0.4.18;
 
 import "node_modules/zeppelin-solidity/contracts/ownership/Ownable.sol";
 import "node_modules/zeppelin-solidity/contracts/math/SafeMath.sol";
+import "node_modules/zeppelin-solidity/contracts/token/ERC721/ERC721.sol";
+import "node_modules/zeppelin-solidity/contracts/token/ERC721/ERC721Token.sol";
 import "./LinniaHub.sol";
 import "./LinniaRoles.sol";
+import "./LinniaPermissions.sol";
 
 
-contract LinniaRecords is Ownable {
+contract LinniaRecords is Ownable, ERC721Token {
     using SafeMath for uint;
 
     struct FileRecord {
@@ -17,7 +20,9 @@ contract LinniaRecords is Ownable {
         // For now the record types are
         // 0 nil, 1 Blood Pressure, 2 A1C, 3 HDL, 4 Triglycerides, 5 Weight
         uint recordType;
-        bytes32 ipfsHash; // ipfs hash of the encrypted file
+        // ipfs hash of the file encrypted to the owner
+        // note that the owner may not be the patient
+        bytes32 ipfsHash;
         uint timestamp; // time the file is added
     }
 
@@ -47,6 +52,19 @@ contract LinniaRecords is Ownable {
         hub = _hub;
     }
 
+    /* External functions */
+    function patientOf(bytes32 fileHash)
+        external view returns (address)
+    {
+        return records[fileHash].patient;
+    }
+
+    function sigExists(bytes32 fileHash, address provider)
+        external view returns (bool)
+    {
+        return records[fileHash].signatures[provider];
+    }
+
     /* Constant functions */
     function recover(bytes32 message, bytes32 r, bytes32 s, uint8 v)
         public pure returns (address)
@@ -54,18 +72,6 @@ contract LinniaRecords is Ownable {
         bytes memory prefix = "\x19Ethereum Signed Message:\n32";
         bytes32 prefixedHash = keccak256(prefix, message);
         return ecrecover(prefixedHash, v, r, s);
-    }
-
-    function patientOf(bytes32 fileHash)
-        public view returns (address)
-    {
-        return records[fileHash].patient;
-    }
-
-    function sigExists(bytes32 fileHash, address provider)
-        public view returns (bool)
-    {
-        return records[fileHash].signatures[provider];
     }
 
     /* Public functions */
@@ -147,6 +153,39 @@ contract LinniaRecords is Ownable {
         return true;
     }
 
+    // ERC-721 overrides
+    function transfer(address _to, uint256 _tokenId) public onlyOwnerOf(_tokenId) {
+        // XXX: right now the process of transferring a medical record ownership is
+        // - owner re-encrypts the file and uploads to ipfs for the new owner
+        // - owner gives the new owner permission to access the file in Permissions
+        // - owner calls `transfer` here
+        bytes32 fileHash = bytes32(_tokenId);
+        // owner must first give access to the recipient
+        require(_canAccessFile(fileHash, _to));
+        // update the IPFS path of the file to be the new owner's
+        bytes32 newIpfsHash = hub.permissionsContract().ipfsHash(fileHash, _to);
+        records[fileHash].ipfsHash = newIpfsHash;
+        ipfsRecords[newIpfsHash] = fileHash;
+        super.transfer(_to, _tokenId);
+    }
+
+    function approve(address _to, uint256 _tokenId) public onlyOwnerOf(_tokenId) {
+        bytes32 fileHash = bytes32(_tokenId);
+        require(_canAccessFile(fileHash, _to));
+        // XXX: what if the owner revokes access later?
+        super.approve(_to, _tokenId);
+    }
+
+    function takeOwnership(uint256 _tokenId) public {
+        bytes32 fileHash = bytes32(_tokenId);
+        require(_canAccessFile(fileHash, msg.sender));
+        // update the IPFS path of the file to be the new owner's
+        bytes32 newIpfsHash = hub.permissionsContract().ipfsHash(fileHash, msg.sender);
+        records[fileHash].ipfsHash = newIpfsHash;
+        ipfsRecords[newIpfsHash] = fileHash;
+        super.takeOwnership(_tokenId);
+    }
+
     /* Private functions */
     function _addRecord(
         bytes32 fileHash, address patient, uint recordType, bytes32 ipfsHash)
@@ -175,6 +214,8 @@ contract LinniaRecords is Ownable {
         ipfsRecords[ipfsHash] = fileHash;
         // emit event
         RecordAdded(fileHash, patient);
+        // mint token for the record
+        _mint(patient, uint(fileHash));
         return true;
     }
 
@@ -198,5 +239,11 @@ contract LinniaRecords is Ownable {
         // emit event
         RecordSigAdded(fileHash, provider, record.irisScore);
         return true;
+    }
+
+    function _canAccessFile(bytes32 fileHash, address viewer)
+        private view returns (bool)
+    {
+        return hub.permissionsContract().canAccessFile(fileHash, viewer);
     }
 }
