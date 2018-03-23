@@ -34,6 +34,17 @@ truffle migrate
 
 # Testing
 To run tests with coverage
+
+(This one works now after I installed: ethereum test rpc locally)
+
+```
+npm install json3
+npm i --save lodash.create
+npm install lodash --save
+npm install --save-dev solidity-coverage
+npm install --save-dev ethereumjs-testrpc-sc
+```
+
 ```
 npm run coverage
 ```
