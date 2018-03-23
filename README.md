@@ -38,7 +38,7 @@ To run tests with coverage
 npm run coverage
 ```
 
-To run tests without coverage
+To run tests without coverage (this one works lol)
 - First start testrpc with `npm start`
   - Alternatively you can run Ganache GUI at port 7545 with network id 5777
 - Run `npm test`
